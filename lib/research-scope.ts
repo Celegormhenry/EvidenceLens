@@ -1,9 +1,13 @@
 import type {SourceRow} from './analysis.ts';
 
-export const MAX_SOURCES=40;
+export const MIN_SOURCES=5;
+export const MAX_SOURCES=100;
+export const DEFAULT_SOURCES=40;
 export const MAX_ADDITIONAL_READS=6;
 export type ResearchMode='overview'|'quick';
-export function researchScope(topic:string,mode:ResearchMode='overview'){
+export function researchScope(topic:string,mode:ResearchMode='overview',pageLimit?:number){
+ const sourceLimit=pageLimit??(mode==='quick'?10:DEFAULT_SOURCES);
+ if(!Number.isInteger(sourceLimit)||sourceLimit<MIN_SOURCES||sourceLimit>MAX_SOURCES)throw Error(`Page limit must be a whole number from ${MIN_SOURCES} to ${MAX_SOURCES}.`);
  const lanes=mode==='quick'?
   [{label:'Primary records',query:`${topic} primary sources official statements evidence`},{label:'Findings and corrections',query:`${topic} investigation findings corrections unresolved questions`}]:
   [{label:'News and developments',query:`${topic} news latest developments`},
@@ -11,7 +15,7 @@ export function researchScope(topic:string,mode:ResearchMode='overview'){
    {label:'Timeline and background',query:`${topic} timeline background earlier events dates`},
    {label:'Participants and impacts',query:`${topic} participants affected people response impact`},
    {label:'Findings and corrections',query:`${topic} investigation findings corrections unresolved questions`}];
- return {mode,lanes,sourceLimit:mode==='quick'?10:MAX_SOURCES,initialReads:mode==='quick'?3:10,additionalReads:mode==='quick'?3:MAX_ADDITIONAL_READS,resultsPerProvider:mode==='quick'?5:8};
+ return {mode,lanes,sourceLimit,initialReads:Math.min(sourceLimit,mode==='quick'?3:10),additionalReads:mode==='quick'?3:MAX_ADDITIONAL_READS,resultsPerProvider:Math.min(20,Math.max(mode==='quick'?5:8,Math.ceil(sourceLimit/lanes.length)))};
 }
 type Candidate=SourceRow&{queryLanes:number[];domain:string};
 const stop=new Set('a an the in on at of for to and or is are was were will has have by event news latest about'.split(' '));

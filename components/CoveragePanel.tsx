@@ -1,14 +1,21 @@
 import type {Run} from '../lib/history';
+import {groupEvidenceSources} from '../lib/evidence-groups';
 
-export default function CoveragePanel({run}:{run:Run}){
+export default function CoveragePanel({run,onSource}:{run:Run;onSource:(id:string)=>void}){
  const c=run.coverage;
  if(!c)return <p className="warning-note">This saved run used the earlier search scope. Search again in Broad overview mode for wider coverage and reading counts.</p>;
  const domains=new Set(run.results.map(r=>r.domain)).size;
+ const groups=groupEvidenceSources(run.results),grouped=groups.reduce((n,g)=>n+g.sourceIds.length,0);
  return <section className="panel coverage-panel">
-  <h3>{c.mode==='overview'?'Broad overview':'Quick check'} · search coverage</h3>
+  <h3>{c.mode==='overview'?'Broad overview':'Quick check'} · search coverage{c.pageLimit?` · ${c.pageLimit}-page limit`:''}</h3>
   <div className="coverage-counts"><div><strong>{c.returned}</strong><span>search results returned</span></div><div><strong>{c.uniqueUrls}</strong><span>distinct URLs</span></div><div><strong>{c.retained}</strong><span>pages in your library</span></div><div><strong>{c.read}</strong><span>page texts retrieved</span></div></div>
   <p>{domains} publisher domains · {c.retained-c.read} pages still have only snippets. Different domains do not establish independent reporting.</p>
-  <p className="caption">{c.duplicatesRemoved} repeated URL results removed. {c.invalidSkipped>0?`${c.invalidSkipped} unusable links skipped. `:''}{c.omitted>0?`${c.omitted} distinct URLs fell outside this run's page limit; they were not judged irrelevant.`:'All distinct usable URLs from this search were retained.'}</p>
+  <div className="dedup-summary"><h4>Deduplication results</h4><div className="dedup-columns"><div><strong>{c.duplicatesRemoved} repeated URL results removed</strong><p>{c.returned-c.invalidSkipped} usable results → {c.uniqueUrls} distinct URLs → {c.retained} pages kept.</p><p className="caption">Same URL across searches, including recognized tracking-link variants, counts once. {c.invalidSkipped>0?`${c.invalidSkipped} unusable links skipped. `:''}{c.omitted>0?`${c.omitted} other distinct URLs were excluded by the page limit, not as duplicates.`:''}</p></div><div><strong>{grouped} pages in {groups.length} content-overlap group{groups.length===1?'':'s'}</strong><p>{groups.length?'Matching text or an explicit shared original was identified. All grouped pages remain available.':c.read<2?'Not enough retrieved text to compare pages yet.':'No matching text or shared original identified in the retrieved text.'}</p><p className="caption">Content grouping does not delete articles or establish independent confirmation. {c.retained-c.read} snippet-only pages remain unassessed.</p></div></div>
+   <details><summary>Inspect duplicate URLs & content groups</summary>
+    {c.duplicateExamples?.length?<div className="duplicate-examples">{c.duplicateExamples.map(example=><article key={example.canonicalUrl}><strong>{example.title}</strong><p className="caption">{example.occurrences} search appearances → 1 distinct URL before the page limit</p><a href={example.canonicalUrl} target="_blank" rel="noreferrer">{example.canonicalUrl}</a>{example.urls.length>1&&<ul>{example.urls.map(url=><li key={url}>{url}</li>)}</ul>}</article>)}</div>:<p className="caption">{c.duplicatesRemoved?'This older run saved duplicate counts only. Search again to capture URL examples.':'No repeated URLs in this search.'}</p>}
+    {groups.map(g=><article className="overlap-example" key={g.id}><strong>{g.id} · {g.sourceIds.length} pages kept for inspection</strong><p className="caption">{g.basis.map(b=>b==='matching_text'?'Matching retrieved text':b==='overlapping_text'?'Highly similar retrieved text':'Explicit shared original URL').join(' · ')}</p><div className="row">{g.sourceIds.map(id=><button className="source-chip" key={id} onClick={()=>onSource(id)}>{id} · {run.results.find(r=>r.id===id)?.domain} ↗</button>)}</div>{g.originalUrls.map(url=><p key={url}><a href={url} target="_blank" rel="noreferrer">Named original source ↗</a></p>)}</article>)}
+   </details>
+  </div>
   <details><summary>Search angles & remaining gaps</summary><div className="coverage-lanes">{c.lanes.map((lane,i)=><div key={i}><strong>{lane.label}</strong><span>{lane.status==='failed'?'Search failed — coverage gap':lane.status==='empty'?'No results — coverage gap':`${lane.retained} retained · ${lane.read} page texts retrieved`}</span></div>)}</div><p className="caption">A search angle records where we looked, not whether the angle is adequately covered. Article counts do not establish a complete account. Snippets and unread material remain gaps.</p></details>
  </section>;
 }

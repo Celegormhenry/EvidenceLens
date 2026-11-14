@@ -22,7 +22,7 @@ export const runValidator=z.object({
     fetchedSourceIds:z.array(z.string()).max(MAX_ADDITIONAL_READS),groupsBefore:z.number(),groupsAfter:z.number(),
     analysisRefreshed:z.boolean()
   }).optional(),
-  coverage:z.object({mode:z.enum(['overview','quick']),returned:z.number(),invalidSkipped:z.number(),duplicatesRemoved:z.number(),uniqueUrls:z.number(),retained:z.number(),omitted:z.number(),read:z.number(),
+  coverage:z.object({mode:z.enum(['overview','quick']),pageLimit:z.number().int().min(5).max(MAX_SOURCES).optional(),duplicateExamples:z.array(z.object({title:z.string(),canonicalUrl:z.string().url(),urls:z.array(z.string().url()).max(3),occurrences:z.number().int().min(2)})).max(5).optional(),returned:z.number(),invalidSkipped:z.number(),duplicatesRemoved:z.number(),uniqueUrls:z.number(),retained:z.number(),omitted:z.number(),read:z.number(),
     lanes:z.array(z.object({label:z.string(),query:z.string(),status:z.enum(['ok','empty','failed']),uniqueUrls:z.number(),retained:z.number(),read:z.number()}))
   }).optional()
 });

@@ -7,7 +7,7 @@ import type {Run} from './history.ts';
 import {parseMonitor} from './monitor.ts';
 import {supportingReads} from './supporting-reads.ts';
 import {groupEvidenceSources} from './evidence-groups.ts';
-import {researchScope,diverseSources,initialReading} from './research-scope.ts';
+import {researchScope,diverseSources,initialReading,MIN_SOURCES,MAX_SOURCES} from './research-scope.ts';
 type Env = Neo4jEnv & {TELEM_API_KEY?:string;TELEM_BASE_URL?:string;OPENAI_API_KEY?:string};
 const DEFAULT_BASE='https://hack.telem.ai/api';
 function apiBase(env:Env){
@@ -60,12 +60,13 @@ export async function handleTelem(request:Request,env:Env){
     if(action==='research'){
       const topic=String(b.topic||'').trim();if(topic.length<5||topic.length>240)return json({error:'Use a topic between 5 and 240 characters.'},400);
       if(b.researchMode!==undefined&&!['quick','overview'].includes(b.researchMode))return json({error:'Unknown research mode'},400);
-      const scope=researchScope(topic,b.researchMode||'overview'),queries=scope.lanes.map(l=>l.query);
+      if(b.pageLimit!==undefined&&(!Number.isInteger(b.pageLimit)||b.pageLimit<MIN_SOURCES||b.pageLimit>MAX_SOURCES))return json({error:`Page limit must be a whole number from ${MIN_SOURCES} to ${MAX_SOURCES}.`},400);
+      const scope=researchScope(topic,b.researchMode||'overview',b.pageLimit),queries=scope.lanes.map(l=>l.query);
       const outcomes=await Promise.allSettled(queries.map(query=>call(env,'/v1/search',{user_input:{query},search:{tier:'default',auto_routing:'accuracy',num_results:scope.resultsPerProvider}})));
-      const map=new Map<string,any>(),warnings:string[]=[];let returned=0,usable=0;
+      const map=new Map<string,any>(),repeats=new Map<string,{title:string;canonicalUrl:string;urls:string[];occurrences:number}>(),warnings:string[]=[];let returned=0,usable=0;
       outcomes.forEach((out,i)=>{if(out.status==='rejected'){warnings.push(String(out.reason?.message||'Search failed'));return;}
         returned+=resultRows(out.value).length;const rr=rows(out.value);usable+=rr.length;if(!rr.length)warnings.push(`Query ${i+1} returned no usable results.`);
-        rr.forEach((r:any)=>{const c=canonical(r.url);const old=map.get(c);if(old){if(!old.queryLanes.includes(i))old.queryLanes.push(i);return;}map.set(c,{...r,id:`L${map.size+1}`,queryLanes:[i],domain:new URL(r.url).hostname.replace(/^www\./,''),reviewStatus:'Unreviewed',retrievedAt:new Date().toISOString()});});
+        rr.forEach((r:any)=>{const c=canonical(r.url);const old=map.get(c);if(old){if(!old.queryLanes.includes(i))old.queryLanes.push(i);const example=repeats.get(c)||{title:old.title,canonicalUrl:c,urls:[old.url],occurrences:1};example.occurrences++;if(example.urls.length<3&&!example.urls.includes(r.url))example.urls.push(r.url);repeats.set(c,example);return;}map.set(c,{...r,id:`L${map.size+1}`,queryLanes:[i],domain:new URL(r.url).hostname.replace(/^www\./,''),reviewStatus:'Unreviewed',retrievedAt:new Date().toISOString()});});
       });
       const allResults=[...map.values()],results=diverseSources(allResults,queries.length,scope.sourceLimit,topic);
       const selected=initialReading(results,queries.length,scope.initialReads,topic).map(r=>r.url);
@@ -113,7 +114,7 @@ export async function handleTelem(request:Request,env:Env){
           catch(e:any){warnings.push(`Additional pages were retained, but the updated analysis is unavailable. ${e.message}`);}
         }
       }
-      const coverage:Run['coverage']={mode:scope.mode,returned,invalidSkipped:returned-usable,duplicatesRemoved:usable-allResults.length,uniqueUrls:allResults.length,retained:results.length,omitted:allResults.length-results.length,read:results.filter(r=>r.content).length,
+      const coverage:Run['coverage']={mode:scope.mode,pageLimit:scope.sourceLimit,duplicateExamples:[...repeats.values()].sort((a,b)=>b.occurrences-a.occurrences).slice(0,5),returned,invalidSkipped:returned-usable,duplicatesRemoved:usable-allResults.length,uniqueUrls:allResults.length,retained:results.length,omitted:allResults.length-results.length,read:results.filter(r=>r.content).length,
         lanes:scope.lanes.map((lane,i)=>({...lane,status:outcomes[i].status==='rejected'?'failed':allResults.some(r=>r.queryLanes.includes(i))?'ok':'empty',uniqueUrls:allResults.filter(r=>r.queryLanes.includes(i)).length,retained:results.filter(r=>r.queryLanes.includes(i)).length,read:results.filter(r=>r.queryLanes.includes(i)&&r.content).length}))};
       const run:Run={id:crypto.randomUUID(),timestamp:new Date().toISOString(),topic,queries,results,warnings,fingerprint:fp,budget:{queryCount:queries.length,resultsPerProvider:scope.resultsPerProvider,fetchUrls:selected.length,fetchBatches,modelCalls,inputTokens,outputTokens},mode:analysis?'live-analysis':'live-retrieval',analysis,additionalReading,coverage};
       const persistence=await persistResearch(request,env,run);

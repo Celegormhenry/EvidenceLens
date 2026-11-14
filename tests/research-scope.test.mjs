@@ -27,12 +27,12 @@ test('relevance outranks domain novelty: unrelated profiles and generic feeds ca
  assert.deepEqual(initialReading(rows,1,2,'Data Center in Texas').map(r=>r.id),['a','b']);
 });
 
-test('overview preserves 40 sources through both model calls and history; fetch batches obey the five-URL cap',async()=>{
+for(const pageLimit of [40,75])test(`overview preserves ${pageLimit} sources through both model calls and history; fetch batches obey the five-URL cap`,async()=>{
  const nativeFetch=globalThis.fetch;let searches=0,models=0;const batches=[],inputs=[];
  globalThis.fetch=async(url,options)=>{
   const body=JSON.parse(options.body);
   if(url.endsWith('/search')){
-   const lane=searches++;assert.equal(body.search.auto_routing,'accuracy');assert.equal(body.search.providers,undefined);assert.equal(body.search.num_results,8);
+   const lane=searches++;assert.equal(body.search.auto_routing,'accuracy');assert.equal(body.search.providers,undefined);assert.equal(body.search.num_results,Math.max(8,Math.ceil(pageLimit/5)));
    const rows=Array.from({length:16},(_,i)=>({url:`https://p${lane}-${i}.example/article`,title:'Harbor pilot authorization',summary:statement}));
    return Response.json({results:[...rows,{...rows[0],url:rows[0].url+'?utm_source=copy'},{url:'javascript:bad',title:'Invalid'}]});
   }
@@ -41,19 +41,23 @@ test('overview preserves 40 sources through both model calls and history; fetch 
    return Response.json({fetched_results:body.urls.map(url=>({url,status:'succeeded',http_status:200,content:article}))});
   }
   assert.equal(url,'https://api.openai.com/v1/responses');models++;
-  const input=JSON.parse(body.input);inputs.push(input);assert.equal(input.sources.length,40);
+  const input=JSON.parse(body.input);inputs.push(input);assert.equal(input.sources.length,pageLimit);
   const targets=input.sources.slice(-4); // citations beyond the former ten-page cutoff
   return Response.json({status:'completed',usage:{input_tokens:100,output_tokens:50},output:[{content:[{type:'output_text',text:JSON.stringify(proposedAnalysis(targets))}]}]});
  };
  try{
-  const response=await handleTelem(new Request('https://test.example/api/telem/research',{method:'POST',headers:{Origin:'https://test.example','Content-Type':'application/json','oai-authenticated-user-id':crypto.randomUUID()},body:JSON.stringify({topic:'Harbor pilot authorization'})}),{TELEM_API_KEY:'fake',OPENAI_API_KEY:'fake'});
+  const response=await handleTelem(new Request('https://test.example/api/telem/research',{method:'POST',headers:{Origin:'https://test.example','Content-Type':'application/json','oai-authenticated-user-id':crypto.randomUUID()},body:JSON.stringify({topic:'Harbor pilot authorization',pageLimit})}),{TELEM_API_KEY:'fake',OPENAI_API_KEY:'fake'});
   const run=await response.json();assert.equal(response.status,200);
   assert.equal(searches,5);assert.equal(models,2);assert.deepEqual(batches.map(b=>b.length),[5,5,5,1]);
   assert.equal(new Set(batches.flat()).size,16);assert.equal(run.budget.fetchUrls,16);
-  assert.deepEqual([run.coverage.returned,run.coverage.invalidSkipped,run.coverage.duplicatesRemoved,run.coverage.uniqueUrls,run.coverage.retained,run.coverage.omitted,run.coverage.read],[90,5,5,80,40,40,16]);
-  assert.ok(run.coverage.lanes.every(l=>l.retained===8&&l.status==='ok'));
+  assert.deepEqual([run.coverage.returned,run.coverage.invalidSkipped,run.coverage.duplicatesRemoved,run.coverage.uniqueUrls,run.coverage.retained,run.coverage.omitted,run.coverage.read],[90,5,5,80,pageLimit,80-pageLimit,16]);
+  assert.ok(run.coverage.lanes.every(l=>l.retained===pageLimit/5&&l.status==='ok'));
   assert.equal(inputs[1].sources.slice(-4).filter(r=>r.type==='fetched_page').length,4);
-  assert.equal(modelSources(run.results).length,40);assert.equal(readRuns([run])[0].results.length,40);
+  assert.equal(modelSources(run.results).length,pageLimit);assert.equal(readRuns([run])[0].results.length,pageLimit);
+  assert.equal(run.coverage.pageLimit,pageLimit);assert.equal(readRuns([run])[0].coverage.pageLimit,pageLimit);
+  assert.equal(run.coverage.duplicateExamples.length,5);assert.equal(run.coverage.duplicateExamples[0].occurrences,2);assert.equal(run.coverage.duplicateExamples[0].urls.length,2);
+  assert.ok(!run.coverage.duplicateExamples[0].canonicalUrl.includes('utm_source'));
+  assert.equal(readRuns([run])[0].coverage.duplicateExamples.length,5);
   assert.equal(readRuns([run])[0].additionalReading.selected.length,6);
   assert.ok(run.analysis.claims[0].evidence.some(e=>e.sourceId===inputs[1].sources.at(-1).id));
  }finally{globalThis.fetch=nativeFetch;}
@@ -76,4 +80,32 @@ test('grounding accepts twelve distinct cited claims instead of silently truncat
  const rows=[{id:'L1',url:'https://example.com',title:'Synthetic',summary:statement}],raw=proposedAnalysis(rows);
  raw.claims=Array.from({length:12},(_,i)=>({...raw.claims[0],id:`C${i+1}`}));
  assert.equal(groundAnalysis(raw,rows,null,false).core.claims.length,12);
+});
+
+test('invalid custom limits are rejected before any paid request',async()=>{
+ const original=globalThis.fetch;let called=false;
+ globalThis.fetch=async()=>{called=true;throw Error('Unexpected provider call')};
+ try{
+  for(const pageLimit of [0,4,101,5.5,'20',null]){
+   const response=await handleTelem(new Request('https://test.example/api/telem/research',{method:'POST',headers:{'Content-Type':'application/json','oai-authenticated-user-id':crypto.randomUUID()},body:JSON.stringify({topic:'Public event',pageLimit})}),{TELEM_API_KEY:'fake'});
+   assert.equal(response.status,400);assert.match((await response.json()).error,/whole number/);
+  }
+  assert.equal(called,false);
+ }finally{globalThis.fetch=original;}
+});
+test('five-page limit bounds retrieval and history while larger limits keep provider requests within 20',async()=>{
+ assert.equal(researchScope('Public event','overview',100).resultsPerProvider,20);
+ assert.equal(researchScope('Public event','quick',100).resultsPerProvider,20);
+ const original=globalThis.fetch;const fetched=[];
+ globalThis.fetch=async(url,options)=>{
+  const body=JSON.parse(options.body);
+  if(url.endsWith('/search'))return Response.json({results:Array.from({length:12},(_,i)=>({url:`https://p${i}.example/a`,title:'Public event',summary:statement}))});
+  fetched.push(...body.urls);return Response.json({fetched_results:body.urls.map(url=>({url,content:article,status:'succeeded'}))});
+ };
+ try{
+  const response=await handleTelem(new Request('https://test.example/api/telem/research',{method:'POST',headers:{'Content-Type':'application/json','oai-authenticated-user-id':crypto.randomUUID()},body:JSON.stringify({topic:'Public event',pageLimit:5})}),{TELEM_API_KEY:'fake'});
+  const run=await response.json();assert.equal(response.status,200);assert.equal(run.results.length,5);assert.equal(fetched.length,5);
+  assert.equal(run.coverage.duplicatesRemoved,48);assert.equal(run.coverage.omitted,7);assert.equal(run.coverage.duplicateExamples[0].occurrences,5);
+  assert.equal(readRuns([run])[0].coverage.pageLimit,5);
+ }finally{globalThis.fetch=original;}
 });

@@ -6,8 +6,8 @@ Built for SearchHack with Telem AI, OpenAI and Neo4j.
 
 ## What it does
 
-- **Research broadly:** search five angles, collect up to 40 pages and read up to 16.
-- **Inspect evidence:** trace claims to original quotations and flag matching or republished content.
+- **Research broadly:** search five angles, choose a limit of 5–100 pages and read up to 16.
+- **Inspect evidence:** see URL deduplication counts and examples, inspect content-overlap groups, and trace claims to quotations.
 - **Explore events:** navigate an interactive graph of events, responses and unresolved questions.
 - **Follow changes:** monitor a topic, compare research runs and save evidence history in Neo4j.
 
