@@ -1,0 +1,8 @@
+TELEM_API_KEY=""
+TELEM_BASE_URL="https://hack.telem.ai/api"
+OPENAI_API_KEY=""
+NEO4J_URI=""
+NEO4J_USERNAME="neo4j"
+NEO4J_PASSWORD=""
+NEO4J_DATABASE="neo4j"
+NEO4J_NAMESPACE="evidence-lens-local"

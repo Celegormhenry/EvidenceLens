@@ -1,0 +1,35 @@
+[
+  {
+    "id": "artemis-dates",
+    "question": "Artemis I: when did it actually launch and return, and did it carry astronauts? Distinguish actual events from earlier planned dates.",
+    "why": "Check whether a researcher can separate obsolete plans from completed events.",
+    "criteria": [
+      {"id":"launch","expected":"Actual launch was November 16, 2022; an earlier planned launch date is not the actual launch."},
+      {"id":"return","expected":"Orion returned/splashed down on December 11, 2022."},
+      {"id":"crew","expected":"Artemis I was uncrewed, not an astronaut landing or crewed flight."}
+    ],
+    "references": ["https://www.nasa.gov/mission/artemis-i/", "https://www.nasa.gov/reference/artemis-i-mission-timeline/"]
+  },
+  {
+    "id": "dart-measurement",
+    "question": "According to NASA's February 2023 DART results, which asteroid was struck, when, and by how much did its orbital period change? Distinguish predicted effects from measured results.",
+    "why": "Check entity confusion and the difference between predictions and later measured outcomes.",
+    "criteria": [
+      {"id":"target","expected":"DART struck Dimorphos, the moonlet orbiting Didymos, not Didymos itself."},
+      {"id":"impact","expected":"Impact occurred September 26, 2022."},
+      {"id":"measurement","expected":"The February 2023 NASA report describes an orbital-period reduction of 33 minutes, plus or minus one minute; roughly 10 minutes was an earlier expectation, not that measurement."}
+    ],
+    "references": ["https://www.nasa.gov/science-research/planetary-science/nasas-dart-data-validates-kinetic-impact-as-planetary-defense-method/", "https://www.nasa.gov/news-release/nasas-dart-mission-hits-asteroid-in-first-ever-planetary-defense-test/"]
+  },
+  {
+    "id": "starliner-return",
+    "question": "Did Wilmore and Williams return to Earth aboard Starliner in September 2024? Distinguish the capsule's return from the astronauts' actual return date and vehicle.",
+    "why": "Check whether similarly named events with different participants and dates are conflated.",
+    "criteria": [
+      {"id":"capsule","expected":"Starliner returned uncrewed in September 2024; September 6 local MDT / September 7 EDT or UTC are compatible dates, not a factual conflict."},
+      {"id":"astronauts","expected":"Wilmore and Williams returned March 18, 2025, rather than aboard Starliner in September 2024."},
+      {"id":"vehicle","expected":"They returned aboard SpaceX Dragon as part of Crew-9."}
+    ],
+    "references": ["https://www.nasa.gov/blogs/spacestation/2024/09/07/starliner-lands-in-new-mexico/", "https://www.nasa.gov/news-release/welcome-home-nasas-spacex-crew-9-back-on-earth-after-science-mission/"]
+  }
+]
